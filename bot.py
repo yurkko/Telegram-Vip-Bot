@@ -124,20 +124,29 @@ async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Get File ID ---
 async def capture_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.video:
-        file_id = update.message.video.file_id
-        await update.message.reply_text(f"file_id: <code>{file_id}</code>", parse_mode='HTML')
-    # Додатково: фото
-    elif update.message.photo:
-        file_id = update.message.photo[-1].file_id
-        await update.message.reply_text(f"file_id: <code>{file_id}</code>", parse_mode='HTML')
+    msg = update.message
+    if msg.photo:
+        file_id = msg.photo[-1].file_id
+        await msg.reply_text(f"🖼 <b>Photo</b> file_id:\n<code>{file_id}</code>", parse_mode="HTML")
+    elif msg.video:
+        file_id = msg.video.file_id
+        await msg.reply_text(f"🎥 <b>Video</b> file_id:\n<code>{file_id}</code>", parse_mode="HTML")
+    elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith("video/"):
+        file_id = msg.document.file_id
+        await msg.reply_text(f"📁 <b>Video Document</b> file_id:\n<code>{file_id}</code>", parse_mode="HTML")
+    else:
+        await msg.reply_text("⚠️ Не вдалося визначити тип медіа або відсутній file_id.")
 # --- Main ---
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(plans|select_base|select_vip|select_vipplus|back_from_plans|back_from_package)$"))
 app.add_handler(CallbackQueryHandler(confirm_payment, pattern="^confirm_\\d+$"))
-app.add_handler(MessageHandler(filters.PHOTO & filters.CaptionRegex("^/get_id$"), capture_file_id))
+app.add_handler(MessageHandler(
+    (filters.PHOTO | filters.VIDEO | (filters.Document.VIDEO & ~filters.Document.ANIMATION)) 
+    & filters.CaptionRegex("^/get_id$"), 
+    capture_file_id
+))
 app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 if __name__ == '__main__':

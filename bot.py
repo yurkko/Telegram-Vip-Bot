@@ -124,10 +124,13 @@ async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Get File ID ---
 async def capture_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo = update.message.photo[-1]
-    file_id = photo.file_id
-    await update.message.reply_text(f"file_id: <code>{file_id}</code>", parse_mode='HTML')
-
+    if update.message.video:
+        file_id = update.message.video.file_id
+        await update.message.reply_text(f"file_id: <code>{file_id}</code>", parse_mode='HTML')
+    # Додатково: фото
+    elif update.message.photo:
+        file_id = update.message.photo[-1].file_id
+        await update.message.reply_text(f"file_id: <code>{file_id}</code>", parse_mode='HTML')
 # --- Main ---
 app = ApplicationBuilder().token(TOKEN).build()
 

@@ -5,6 +5,36 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 # --- Config ---
 ADMIN_IDS = [7409502548]  # <-- Замінити на свій реальний Telegram ID
 
+# --- Global memory to track user package selections ---
+USER_PACKAGE_SELECTIONS = {}
+
+# --- Package-specific content ---
+PACKAGE_CONTENT = {
+    "base": {
+        "album_photo": [
+            "AgACAgIAAxkBAAIBS2g4hDyCuZrHDzCnStGvxEFvioqaAAKM8zEbD1DJSaWS_VqMyqXuAQADAgADeQADNgQ",
+            "AgACAgIAAxkBAAIBTWg4hFlgvvCswbQXymqg-bb1FTQFAAKN8zEbD1DJSVVJn3GV6cvyAQADAgADeQADNgQ"
+        ],
+        "single_items": []
+    },
+    "vip": {
+        "album_photo": [
+            "AgACAgIAAxkBAAIBT2g4hHPszR_HOVfz9fEq9gOUEh5jAAKO8zEbD1DJSeesZZIrhiKMAQADAgADdwADNgQ",
+            "AgACAgIAAxkBAAIBYmg4iRF6jqxP_09VsjG4ru60UZHgAAKr8zEbD1DJSYd5XaJvA7OKAQADAgADdwADNgQ",
+            "AgACAgIAAxkBAAIBZGg4iUDBtjUiA7bClZEOjY43zZbfAAKu8zEbD1DJSagMhu-rWylRAQADAgADeQADNgQ",
+            "AgACAgIAAxkBAAIBZmg4iXMK2fkwRBLHtsQ9IYMntv6nAAKy8zEbD1DJSXgunLoSQ9-WAQADAgADeQADNgQ"
+        ],
+        "single_items": [
+            {"type": "video", "file_id": "BAACAgIAAxkBAAIBYGg4iM4MPxdS1eN-5PY-yozR-I3ZAAL0cwACD1DJSdOSEbBt8-ieNgQ"}
+        ]
+    },
+    "vipplus": {
+        "album_photo": ["AgACAgIAAxkBAAIBaGg4iY2ERsgMTmPap_KApw1vGesjAAK08zEbD1DJSQ9xcDi9qwSiAQADAgADeQADNgQ"],
+        "single_items": []
+    }
+}
+
+
 import os
 TOKEN = os.getenv("TOKEN")
 
@@ -80,6 +110,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data.startswith("select_"):
         level = query.data.split("_")[1]
+        USER_PACKAGE_SELECTIONS[query.from_user.id] = level
         payment_info = {
             "base": ("80₴", "🥉 BASE", "AgACAgIAAxkBAAMtaDdcQrO2yK0aqIInTDOhoAIDmxQAAkX6MRs19blJI4Te4Kkdyg8BAAMCAAN3AAM2BA"),
             "vip": ("250₴", "🥈 VIP", "AgACAgIAAxkBAAM8aDddkvFoS1yqq6cAAZBi6Tch0VhCAAJM-jEbNfW5Sdl1sj_dsdraAQADAgADeAADNgQ"),
@@ -115,11 +146,35 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Дякую, чек отримано! Очікуй підтвердження від адміністрації.")
 
 # --- Confirm Handler ---
+from telegram import InputMediaPhoto, InputMediaVideo
+
 async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = int(query.data.split("_")[1])
-    await context.bot.send_message(chat_id=user_id, text="🎉 Підписка активована! Ось твій контент або доступ до каналу:")
+    level = USER_PACKAGE_SELECTIONS.get(user_id)
+
+    if not level:
+        await context.bot.send_message(chat_id=user_id, text="⚠️ Сталася помилка: не знайдено обраного пакету.")
+        return
+
+    content = PACKAGE_CONTENT.get(level, {})
+
+    # Надіслати альбом фото, якщо є
+    album_photos = content.get("album_photo", [])
+    if album_photos:
+        media_group = [InputMediaPhoto(media=file_id) for file_id in album_photos]
+        await context.bot.send_media_group(chat_id=user_id, media=media_group)
+
+    # Надіслати інші медіа (наприклад відео)
+    for item in content.get("single_items", []):
+        if item["type"] == "photo":
+            await context.bot.send_photo(chat_id=user_id, photo=item["file_id"])
+        elif item["type"] == "video":
+            await context.bot.send_video(chat_id=user_id, video=item["file_id"])
+
+    await context.bot.send_message(chat_id=user_id, text="🎉 Підписка активована! Дякуємо за покупку.")
     await query.edit_message_text("✅ Підписка підтверджена.")
 
 # --- Get File ID ---
@@ -146,6 +201,7 @@ async def capture_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await msg.reply_text("⚠️ Не знайдено підтримуваного медіа.")
 
+
 # --- Main ---
 app = ApplicationBuilder().token(TOKEN).build()
 
@@ -156,7 +212,6 @@ app.add_handler(MessageHandler(
     (filters.PHOTO | filters.VIDEO | filters.Document.VIDEO) & filters.CaptionRegex("^/get_id$"),
     capture_file_id
 ))
-
 app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 if __name__ == '__main__':
